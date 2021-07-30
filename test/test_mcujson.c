@@ -69,9 +69,41 @@ void test_mcujson_base_object(void) {
     TEST_ASSERT(root->node->parent == NULL);
 }
 
+void test_mcujson_incorrect_object(void) {
+    enum mcujson_error err;
+    struct mcujson_root *root = mcujson_init_from_str("{   ", &err);
+    TEST_ASSERT(root == NULL);
+    root = mcujson_init_from_str("{ ,}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"k\" ,}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"k\" :  true,}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"k :  true}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{{\"k\" :  true}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"o\":{\"k\" :  true}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"k\" :  true}}   ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{ \"key\":\"val\",\"key\"}  ", &err);
+    TEST_ASSERT(root == NULL);
+
+    root = mcujson_init_from_str("{\"key\":\"val\",\"obj\":{\"key2\":\"val2\"},,\"key\":\"val\"}   ", &err);
+    TEST_ASSERT(root == NULL);
+}
+
 void test_mcujson_init_from_str(void) {
     enum mcujson_error err;
-    struct mcujson_root *root = mcujson_init_from_str("{\"key\":\"val\",\"key2\":\"val2\"}", &err);
+    struct mcujson_root *root = mcujson_init_from_str("{\"key\":\"val\",\"key2\":true}", &err);
     TEST_ASSERT(root != NULL);
     TEST_ASSERT(root->node != NULL);
     struct mcujson_node *node = root->node;
@@ -83,10 +115,9 @@ void test_mcujson_init_from_str(void) {
     TEST_ASSERT_EQUAL_STRING("val", object_key_value->value.str);
 
     object_key_value = object_key_value->next;
-    TEST_ASSERT_EQUAL_INT(mcujson_string, object_key_value->type);
+    TEST_ASSERT_EQUAL_INT(mcujson_true, object_key_value->type);
     TEST_ASSERT_EQUAL_PTR(node, object_key_value->parent);
     TEST_ASSERT_EQUAL_STRING("key2", object_key_value->key);
-    TEST_ASSERT_EQUAL_STRING("val2", object_key_value->value.str);
 }
 
 void test_mcujson_init_multi_from_str(void) {

@@ -98,7 +98,7 @@ struct mcujson_root *mcujson_init_from_str(const char *str, enum mcujson_error *
 
     enum parser_state parser_state = parser_state_wait_begin;
 
-    while (*str != '\0') {
+    while (*str != '\0' && str != NULL) {
         switch(parser_state) {
         case parser_state_wait_begin:
             parser_state = parser_wait_begin(*str);
@@ -111,14 +111,17 @@ struct mcujson_root *mcujson_init_from_str(const char *str, enum mcujson_error *
             node->type = mcujson_array;
             break;
         case parser_state_parse_finish:
+            parser_state = parser_state_invalid_json;
             break;
         case parser_state_invalid_json:
-            // free root
-            return NULL;
-            // mcujson_destroy_tree(&root);
-            /* break; */
+            break;
         default:
             break;
+        }
+
+        if (parser_state == parser_state_invalid_json) {
+            mcujson_destroy_tree(&root);
+            return NULL;
         }
 
         str++;
@@ -127,8 +130,25 @@ struct mcujson_root *mcujson_init_from_str(const char *str, enum mcujson_error *
 }
 
 static void mcujson_destroy_tree(struct mcujson_root **root) {
-    // TODO: implement recursive resource release
+    struct mcujson_node *node = (*root)->node;
+    free(*root);
     *root = NULL;
+
+    while (node) {
+        if (node->type == mcujson_array || node->type == mcujson_object) {
+            node->type = mcujson_unknown;
+            node = node->value.obj;
+            continue;
+        }
+        struct mcujson_node *del = node;
+        if (node->next) {
+            node = node->next;
+        } else {
+            node = node->parent;
+        }
+        free(del);
+    }
+
 }
 
 static enum parser_state parser_parse_object(const char *str, const char **end, struct mcujson_node **node) {
@@ -140,6 +160,7 @@ static enum parser_state parser_parse_object(const char *str, const char **end, 
  *      }
  *  }"
  */
+
     *end = str;
     struct value value;
     enum parser_state parser_state = parser_state_invalid_json;
@@ -167,7 +188,9 @@ static enum parser_state parser_parse_object(const char *str, const char **end, 
         if (current->key == NULL || *current->key == '\0' || *end == NULL) {
             break;
         }
+
         if (**end != ':') {
+            *end = NULL;
             break;
         }
         (*end)++;
@@ -182,6 +205,11 @@ static enum parser_state parser_parse_object(const char *str, const char **end, 
             }
 
             (*end)++;
+
+            if (**end == '}') {
+                *end = NULL;
+                break;
+            }
         } else if (current->type == mcujson_array) {
             parser_state = parser_state_parse_array;
             break;
@@ -192,7 +220,7 @@ static enum parser_state parser_parse_object(const char *str, const char **end, 
         }
     }
 
-    if (**end == '}') {
+    if (*end && **end == '}') {
         *node = (*node)->parent;
         if (*node == NULL) {
             parser_state = parser_state_parse_finish;

@@ -3,6 +3,7 @@
 
 
 enum mcujson_type {
+    mcujson_unknown,
     mcujson_object,
     mcujson_array,
     mcujson_string,
@@ -10,7 +11,6 @@ enum mcujson_type {
     mcujson_true,
     mcujson_false,
     mcujson_null,
-    mcujson_unknown
 };
 
 
