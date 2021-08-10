@@ -84,6 +84,7 @@ static enum parser_state parser_wait_begin(char c) {
 
 static void mcujson_destroy_tree(struct mcujson_root **root);
 static enum parser_state parser_parse_object(const char *str, const char **end, struct mcujson_node **root);
+static enum parser_state parser_parse_array(const char *str, const char **end, struct mcujson_node **node);
 // TODO: description whithout layer, a simple object or array that does not
 // contain object or array {"key":"val","key":"val"}
 struct mcujson_root *mcujson_init_from_str(const char *str, enum mcujson_error *const err) {
@@ -109,6 +110,7 @@ struct mcujson_root *mcujson_init_from_str(const char *str, enum mcujson_error *
             break;
         case parser_state_parse_array:
             node->type = mcujson_array;
+            parser_state = parser_parse_array(str, &str, &node);
             break;
         case parser_state_parse_finish:
             parser_state = parser_state_invalid_json;
@@ -148,7 +150,103 @@ static void mcujson_destroy_tree(struct mcujson_root **root) {
         }
         free(del);
     }
+}
 
+
+static enum parser_state get_next_parser_state(enum parser_state parser_state, const struct mcujson_node *node) {
+    if (node == NULL) {
+        return parser_state_parse_finish;
+    }
+
+    if (node->type == mcujson_array) {
+        parser_state = parser_state_parse_array;
+    } else if (node->type == mcujson_object) {
+        parser_state = parser_state_parse_object;
+    }
+
+    return parser_state;
+}
+
+
+static enum parser_state parser_parse_array(const char *str, const char **end, struct mcujson_node **node) {
+/**
+ *  [                       node1->type = array     node1->next = NULL      node1->parent = NULL        node1->value.obj = node2    node1->key = NULL
+ *      "val1",             node2->type = string    node2->next = node3     node2->parent = node1       node2->value.str = val1     node2->key = NULL
+ *      true,               node3->type = true      node3->next = node4     node3->parent = node1       node3->value.str = NULL     node3->key = NULL
+ *      {                   node4->type = object    node4->next = node9     node4->parent = node1       node4->value.obj = node5    node4->key = NULL
+ *          "key1":"val1",  node5->type = string    node5->next = node6     node5->parent = node4       node5->value.obj = val1     node5->key = key1
+ *          "array": [      node6->type = array     node6->next = NULL      node6->parent = node4       node6->value.obj = node7    node6->key = array
+ *              "val1",     node7->type = string    node7->next = node8     node7->parent = node6       node7->value.str = val1     node7->key = NULL
+ *              "val2"      node8->type = string    node8->next = NULL      node8->parent = node6       node7->value.str = val2     node8->key = NULL
+ *          ]
+ *      },
+ *      [                   node9->type = array     node9->next = NULL      node9->parent = node1       node9->value.obj = node10   node9->key = NULL
+ *          "val1",         node10->type = string   node10->next = NULL     node10->parent = node9      node10->value.str = val1    node10->key = NULL
+ *      ]
+ *  ]
+ *
+ */
+    *end = str;
+    struct value value;
+    enum parser_state parser_state = parser_state_invalid_json;
+
+    if (*node == NULL) {
+        return parser_state;
+    }
+
+    struct mcujson_node *current = (*node)->value.obj;
+    while(current && current->next) {
+        current = current->next;
+    }
+
+    while (*end && **end != '\0' && **end != ']') {
+        struct mcujson_node *new_node = mcujson_new_node();
+
+        if (current == NULL) {
+            (*node)->value.obj = new_node;
+            current = (*node)->value.obj;
+        } else {
+            current->next = new_node;
+            current = current->next;
+        }
+        current->parent = *node;
+
+        value = parser_get_value(*end, end);
+        current->type = value.type;
+
+        if (current->type != mcujson_array && current->type != mcujson_object) {
+            current->value.str = value.str;
+            if (**end != ',') {
+                break;
+            }
+
+            (*end)++;
+
+            if (**end == ']') {
+                *end = NULL;
+                break;
+            }
+        } else if (current->type == mcujson_array) {
+            parser_state = parser_state_parse_array;
+            break;
+        } else {
+            parser_state = parser_state_parse_object;
+            *node = current;
+            break;
+        }
+    }
+
+    if (*end && **end == ']') {
+        *node = (*node)->parent;
+        parser_state = get_next_parser_state(parser_state, *node);
+        if (parser_state == parser_state_parse_array || parser_state == parser_state_parse_object) {
+            if (*(*end + 1) == ',') {
+                *end += 2;
+            }
+        }
+    }
+
+    return parser_state;
 }
 
 static enum parser_state parser_parse_object(const char *str, const char **end, struct mcujson_node **node) {
@@ -222,12 +320,8 @@ static enum parser_state parser_parse_object(const char *str, const char **end, 
 
     if (*end && **end == '}') {
         *node = (*node)->parent;
-        if (*node == NULL) {
-            parser_state = parser_state_parse_finish;
-        } else if ((*node)->type == mcujson_array) {
-            parser_state = parser_state_parse_array;
-        } else if ((*node)->type == mcujson_object) {
-            parser_state = parser_state_parse_object;
+        parser_state = get_next_parser_state(parser_state, *node);
+        if (parser_state == parser_state_parse_finish || parser_state == parser_state_parse_object) {
             if (*(*end + 1) == ',') {
                 *end += 2;
             }

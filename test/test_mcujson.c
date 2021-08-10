@@ -69,6 +69,37 @@ void test_mcujson_base_object(void) {
     TEST_ASSERT(root->node->parent == NULL);
 }
 
+
+void test_mcujson_base_array(void) {
+    enum mcujson_error err;
+    struct mcujson_root *root = mcujson_init_from_str("[]", &err);
+    TEST_ASSERT(root != NULL);
+    TEST_ASSERT(root->node != NULL);
+    TEST_ASSERT_EQUAL_INT(mcujson_array, root->node->type);
+    TEST_ASSERT(root->node->next == NULL);
+    TEST_ASSERT(root->node->value.obj == NULL);
+    TEST_ASSERT(root->node->parent == NULL);
+}
+
+void test_msujson_simple_array_from_str(void) {
+    enum mcujson_error err;
+    struct mcujson_root *root = mcujson_init_from_str("[\"key\",true]", &err);
+    TEST_ASSERT(root != NULL);
+    TEST_ASSERT(root->node != NULL);
+    struct mcujson_node *node = root->node;
+    TEST_ASSERT_EQUAL_INT(mcujson_array, node->type);
+    struct mcujson_node *object_key_value = node->value.obj;
+    TEST_ASSERT_EQUAL_INT(mcujson_string, object_key_value->type);
+    TEST_ASSERT_EQUAL_PTR(node, object_key_value->parent);
+    TEST_ASSERT_EQUAL_PTR(NULL, object_key_value->key);
+    TEST_ASSERT_EQUAL_STRING("key", object_key_value->value.str);
+
+    object_key_value = object_key_value->next;
+    TEST_ASSERT_EQUAL_INT(mcujson_true, object_key_value->type);
+    TEST_ASSERT_EQUAL_PTR(node, object_key_value->parent);
+    TEST_ASSERT_EQUAL_PTR(NULL, object_key_value->key);
+}
+
 void test_mcujson_incorrect_object(void) {
     enum mcujson_error err;
     struct mcujson_root *root = mcujson_init_from_str("{   ", &err);
